@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>扫雷 | 我的作品集</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #111827;
+            font-family: Arial, sans-serif;
+            color: #e5e5e5;
+        }
+
+        .game-info {
+            display: flex;
+            justify-content: space-between;
+            width: 400px;
+            margin-bottom: 10px;
+            padding: 8px 20px;
+            background-color: #1f2937;
+            border: 2px solid #fbbf24;
+            border-radius: 8px;
+        }
+
+        .info-item {
+            color: #fbbf24;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .game-container {
+            position: relative;
+        }
+
+        #minesweeperBoard {
+            display: grid;
+            grid-template-columns: repeat(16, 25px);
+            gap: 1px;
+            background-color: #1f2937;
+            border: 2px solid #fbbf24;
+        }
+
+        .cell {
+            width: 25px;
+            height: 25px;
+            background-color: #374151;
+            border: none;
+            color: #e5e5e5;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+
+        .cell:hover:not(.opened):not(.flagged):not(.mine) {
+            background-color: #4b5563;
+        }
+
+        .cell.opened {
+            background-color: #1f2937;
+            cursor: default;
+        }
+
+        .cell.flagged {
+            color: #ef4444;
+        }
+
+        .cell.mine {
+            color: #ef4444;
+            background-color: #1f2937;
+        }
+
+        .cell.num1 {
+            color: #3b82f6;
+        }
+
+        .cell.num2 {
+            color: #22c55e;
+        }
+
+        .cell.num3 {
+            color: #ef4444;
+        }
+
+        .cell.num4 {
+            color: #8b5cf6;
+        }
+
+        .cell.num5 {
+            color: #f97316;
+        }
+
+        .cell.num6 {
+            color: #06b6d4;
+        }
+
+        .cell.num7 {
+            color: #fbbf24;
+        }
+
+        .cell.num8 {
+            color: #f87171;
+        }
+
+        /* 仅保留结束/胜利提示，删掉开始/暂停提示样式 */
+        .game-over,
+        .game-win {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+            background: rgba(17, 24, 39, 0.9);
+            padding: 20px 40px;
+            border-radius: 10px;
+            display: none;
+        }
+
+        .game-over {
+            color: #ef4444;
+        }
+
+        .game-win {
+            color: #22c55e;
+        }
+
+        .tips {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="game-info">
+        <div class="info-item">雷数：<span id="mineCount">40</span></div>
+        <div class="info-item">计时：<span id="gameTime">0</span>s</div>
+    </div>
+
+    <div class="game-container">
+        <!-- 删掉开始/暂停提示，仅保留结束/胜利提示 -->
+        <div class="game-over">Game Over</div>
+        <div class="game-win">You Win</div>
+        <div id="minesweeperBoard"></div>
+    </div>
+
+    <!-- 简化操作说明，E键仅标注重玩 -->
+    <div class="tips">操作说明：左键点开格子 | 右键标记地雷 | E 重新开始 | 40雷/16*16棋盘</div>
+
+    <script>
+        // 游戏基础配置
+        const ROWS = 16;
+        const COLS = 16;
+        const MINE_COUNT = 40;
+        // DOM元素获取
+        const board = document.getElementById('minesweeperBoard');
+        const mineCountEl = document.getElementById('mineCount');
+        const gameTimeEl = document.getElementById('gameTime');
+        const gameOverEl = document.querySelector('.game-over');
+        const gameWinEl = document.querySelector('.game-win');
+
+        // 游戏状态变量（删掉暂停相关变量，简化状态）
+        let minePositions = new Set();
+        let flaggedCount = 0;
+        let openedCount = 0;
+        let gameOver = false;
+        let gameTimer = null;
+        let gameTime = 0;
+
+        // 初始化棋盘DOM - 创建所有格子按钮
+        function initBoardDOM() {
+            board.innerHTML = '';
+            for (let i = 0; i < ROWS; i++) {
+                for (let j = 0; j < COLS; j++) {
+                    const cell = document.createElement('button');
+                    cell.className = 'cell';
+                    cell.dataset.row = i;
+                    cell.dataset.col = j;
+                    cell.addEventListener('click', () => openCell(i, j));
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        flagCell(i, j);
+                    });
+                    board.appendChild(cell);
+                }
+            }
+        }
+
+        // 生成地雷 - 避开首次点击的格子，防止开局踩雷
+        function generateMines(avoidRow, avoidCol) {
+            minePositions.clear();
+            while (minePositions.size < MINE_COUNT) {
+                const row = Math.floor(Math.random() * ROWS);
+                const col = Math.floor(Math.random() * COLS);
+                if (row !== avoidRow || col !== avoidCol) {
+                    minePositions.add(`${row},${col}`);
+                }
+            }
+        }
+
+        // 计算指定格子周围的地雷数量
+        function getSurroundingMines(row, col) {
+            let mineNum = 0;
+            for (let i = -1; i <= 1; i++) {
+                for (let j = -1; j <= 1; j++) {
+                    if (i === 0 && j === 0) continue;
+                    const newRow = row + i;
+                    const newCol = col + j;
+                    if (newRow >= 0 && newRow < ROWS && newCol >= 0 && newCol < COLS) {
+                        if (minePositions.has(`${newRow},${newCol}`)) mineNum++;
+                    }
+                }
+            }
+            return mineNum;
+        }
+
+        // 打开格子 - 核心逻辑（删掉所有暂停判断）
+        function openCell(row, col) {
+            if (gameOver || isCellFlagged(row, col) || isCellOpened(row, col)) return;
+
+            const cell = getCellElement(row, col);
+            // 踩中地雷 - 游戏结束
+            if (minePositions.has(`${row},${col}`)) {
+                gameOver = true;
+                clearInterval(gameTimer);
+                gameOverEl.style.display = 'block';
+                showAllMines();
+                return;
+            }
+
+            // 首次打开格子 - 生成地雷+启动计时（加载后第一次点击）
+            if (minePositions.size === 0) {
+                generateMines(row, col);
+                startTimer();
+            }
+
+            // 标记格子为已打开并更新计数
+            cell.classList.add('opened');
+            openedCount++;
+            const surMineNum = getSurroundingMines(row, col);
+
+            // 显示周围雷数或递归扫空无雷区域
+            if (surMineNum > 0) {
+                cell.textContent = surMineNum;
+                cell.classList.add(`num${surMineNum}`);
+            } else {
+                for (let i = -1; i <= 1; i++) {
+                    for (let j = -1; j <= 1; j++) {
+                        if (i === 0 && j === 0) continue;
+                        const newRow = row + i;
+                        const newCol = col + j;
+                        if (newRow >= 0 && newRow < ROWS && newCol >= 0 && newCol < COLS) {
+                            openCell(newRow, newCol);
+                        }
+                    }
+                }
+            }
+
+            // 胜利判断
+            if (openedCount === ROWS * COLS - MINE_COUNT) {
+                gameOver = true;
+                clearInterval(gameTimer);
+                gameWinEl.style.display = 'block';
+                flagAllMines();
+            }
+        }
+
+        // 标记/取消标记地雷（删掉暂停判断）
+        function flagCell(row, col) {
+            if (gameOver || isCellOpened(row, col)) return;
+
+            const cell = getCellElement(row, col);
+            if (cell.classList.contains('flagged')) {
+                cell.classList.remove('flagged');
+                cell.textContent = '';
+                flaggedCount--;
+            } else if (flaggedCount < MINE_COUNT) {
+                cell.classList.add('flagged');
+                cell.textContent = '⚐';
+                flaggedCount++;
+            }
+            mineCountEl.textContent = MINE_COUNT - flaggedCount;
+        }
+
+        // 游戏结束 - 显示所有地雷
+        function showAllMines() {
+            minePositions.forEach(pos => {
+                const [row, col] = pos.split(',').map(Number);
+                const cell = getCellElement(row, col);
+                if (!cell.classList.contains('flagged')) {
+                    cell.classList.add('mine');
+                    cell.textContent = '💣';
+                }
+            });
+        }
+
+        // 游戏胜利 - 自动标记所有地雷
+        function flagAllMines() {
+            minePositions.forEach(pos => {
+                const [row, col] = pos.split(',').map(Number);
+                const cell = getCellElement(row, col);
+                if (!cell.classList.contains('flagged')) {
+                    cell.classList.add('flagged');
+                    cell.textContent = '⚐';
+                }
+            });
+            mineCountEl.textContent = 0;
+        }
+
+        // 启动游戏计时（删掉暂停判断，计时全程运行）
+        function startTimer() {
+            clearInterval(gameTimer);
+            gameTime = 0;
+            gameTimeEl.textContent = gameTime;
+            gameTimer = setInterval(() => {
+                gameTime++;
+                gameTimeEl.textContent = gameTime;
+            }, 1000);
+        }
+
+        // 重置游戏 - E键仅执行此功能（加载后无需调用，仅重玩用）
+        function resetGame() {
+            // 重置所有游戏状态
+            gameOver = false;
+            flaggedCount = 0;
+            openedCount = 0;
+            gameTime = 0;
+            minePositions.clear();
+            // 重置DOM显示
+            gameOverEl.style.display = 'none';
+            gameWinEl.style.display = 'none';
+            mineCountEl.textContent = MINE_COUNT;
+            gameTimeEl.textContent = 0;
+            // 清除定时器，重新初始化棋盘
+            clearInterval(gameTimer);
+            initBoardDOM();
+        }
+
+        // 工具函数
+        function getCellElement(row, col) {
+            return document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        }
+        function isCellOpened(row, col) {
+            return getCellElement(row, col).classList.contains('opened');
+        }
+        function isCellFlagged(row, col) {
+            return getCellElement(row, col).classList.contains('flagged');
+        }
+
+        // 键盘控制 - 仅保留E键重玩功能
+        document.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'e') {
+                resetGame();
+            }
+        });
+
+        // 页面加载完成 - 直接初始化棋盘，无需按E，默认开始
+        window.addEventListener('load', initBoardDOM);
+    </script>
+</body>
+
+</html>
