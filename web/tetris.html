@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>俄罗斯方块 | 我的作品集</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #111827;
+            font-family: Arial, sans-serif;
+            color: #e5e5e5;
+        }
+
+        .game-container {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+            position: relative;
+        }
+
+        .tetris-canvas {
+            border: 2px solid #fbbf24;
+            background-color: #1f2937;
+        }
+
+        .game-info {
+            background-color: #1f2937;
+            border: 1px solid rgba(251, 191, 36, 0.2);
+            padding: 20px;
+            border-radius: 12px;
+            min-width: 200px;
+        }
+
+        .score-board {
+            margin-bottom: 20px;
+        }
+
+        .score-title {
+            font-size: 18px;
+            color: #94a3b8;
+            margin-bottom: 5px;
+        }
+
+        .score-value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #fbbf24;
+        }
+
+        .controls {
+            margin-top: 20px;
+        }
+
+        .control-title {
+            font-size: 18px;
+            color: #94a3b8;
+            margin-bottom: 10px;
+        }
+
+        .control-item {
+            font-size: 14px;
+            margin: 5px 0;
+            color: #e5e5e5;
+        }
+
+        .game-status {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ef4444;
+            font-size: 48px;
+            font-weight: bold;
+            text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+            display: none;
+            z-index: 10;
+            width: 100%;
+            text-align: center;
+        }
+
+        .status-text {
+            background-color: rgba(17, 24, 39, 0.8);
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .hint-text {
+            margin-top: 20px;
+            font-size: 20px;
+            color: #fbbf24;
+            text-shadow: 0 0 5px rgba(251, 191, 36, 0.5);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="game-container">
+        <div class="game-status" id="gameStatus">
+            <div class="status-text" id="statusText">Game Over</div>
+            <div class="hint-text" id="hintText">按 E 重新开始 | 按 Q 暂停/继续</div>
+        </div>
+        <canvas id="tetrisCanvas" class="tetris-canvas" width="300" height="600"></canvas>
+        <div class="game-info">
+            <div class="score-board">
+                <div class="score-title">当前分数</div>
+                <div class="score-value" id="score">0</div>
+            </div>
+            <div class="score-board">
+                <div class="score-title">当前等级</div>
+                <div class="score-value" id="level">1</div>
+            </div>
+            <div class="controls">
+                <div class="control-title">操作说明</div>
+                <div class="control-item">← →：左右移动</div>
+                <div class="control-item">↑：旋转方块</div>
+                <div class="control-item">↓：加速下落</div>
+                <div class="control-item">E：开始/重新开始游戏</div>
+                <div class="control-item">Q：暂停/继续游戏</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 核心配置（固定参数，避免动态计算误差）
+        const canvas = document.getElementById('tetrisCanvas');
+        const ctx = canvas.getContext('2d');
+        const GRID_SIZE = 30;
+        const COLS = 10; // 固定10列（300/30）
+        const ROWS = 20; // 固定20行（600/30）
+        canvas.width = COLS * GRID_SIZE;
+        canvas.height = ROWS * GRID_SIZE;
+
+        // 游戏状态（速度相关参数单独管理）
+        const game = {
+            board: Array(ROWS).fill().map(() => Array(COLS).fill(null)),
+            currentPiece: null,
+            currentX: 0,
+            currentY: 0,
+            score: 0,
+            level: 1,
+            baseSpeed: 1000, // 基础速度（等级1）
+            currentSpeed: 1000, // 当前实际速度
+            minSpeed: 100, // 最小速度（等级10）
+            speedStep: 100, // 每级加速幅度
+            isRunning: false,
+            isPaused: false,
+            timer: null,
+            lastFallTime: 0 // 时间戳控制下落，替代定时器波动
+        };
+
+        // 方块定义（固定形状，无动态修改）
+        const TETROMINOES = [
+            { shape: [[1, 1, 1, 1]], color: '#fbbf24' }, // I
+            { shape: [[1, 1], [1, 1]], color: '#ef4444' }, // O
+            { shape: [[1, 1, 1], [0, 1, 0]], color: '#22c55e' }, // T
+            { shape: [[1, 1, 1], [1, 0, 0]], color: '#3b82f6' }, // L
+            { shape: [[1, 1, 1], [0, 0, 1]], color: '#8b5cf6' }, // J
+            { shape: [[1, 1, 0], [0, 1, 1]], color: '#f97316' }, // S
+            { shape: [[0, 1, 1], [1, 1, 0]], color: '#06b6d4' }  // Z
+        ];
+
+        // DOM元素
+        const els = {
+            status: document.getElementById('gameStatus'),
+            statusText: document.getElementById('statusText'),
+            hintText: document.getElementById('hintText'),
+            score: document.getElementById('score'),
+            level: document.getElementById('level')
+        };
+
+        // 1. 生成新方块（完全独立，位置精准）
+        function spawnPiece() {
+            // 深拷贝避免引用
+            const randomIdx = Math.floor(Math.random() * TETROMINOES.length);
+            game.currentPiece = JSON.parse(JSON.stringify(TETROMINOES[randomIdx]));
+
+            // 固定居中位置（避免动态计算误差）
+            const pieceWidth = game.currentPiece.shape[0].length;
+            game.currentX = Math.max(0, Math.floor(COLS / 2) - Math.floor(pieceWidth / 2));
+            game.currentY = 0;
+
+            // 检测游戏结束
+            if (checkCollision(0, 0)) {
+                endGame();
+                return false;
+            }
+            return true;
+        }
+
+        // 2. 碰撞检测（精准无误差）
+        function checkCollision(dx, dy) {
+            if (!game.currentPiece) return false;
+
+            const shape = game.currentPiece.shape;
+            for (let y = 0; y < shape.length; y++) {
+                for (let x = 0; x < shape[y].length; x++) {
+                    if (shape[y][x]) {
+                        const newX = game.currentX + x + dx;
+                        const newY = game.currentY + y + dy;
+
+                        // 严格边界检测
+                        if (newX < 0 || newX >= COLS || newY >= ROWS) return true;
+                        // 已有方块检测
+                        if (newY >= 0 && game.board[newY][newX] !== null) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // 3. 固定方块到棋盘（稳定无延迟）
+        function lockPiece() {
+            if (!game.currentPiece) return;
+
+            const shape = game.currentPiece.shape;
+            const color = game.currentPiece.color;
+            for (let y = 0; y < shape.length; y++) {
+                for (let x = 0; x < shape[y].length; x++) {
+                    if (shape[y][x]) {
+                        const boardY = game.currentY + y;
+                        const boardX = game.currentX + x;
+                        if (boardY >= 0 && boardX >= 0 && boardX < COLS) {
+                            game.board[boardY][boardX] = color;
+                        }
+                    }
+                }
+            }
+
+            clearLines();
+            spawnPiece();
+            draw();
+        }
+
+        // 4. 消除满行（仅更新分数，不频繁修改速度）
+        function clearLines() {
+            let linesCleared = 0;
+            // 从下往上检测，避免漏行
+            for (let y = ROWS - 1; y >= 0; y--) {
+                if (game.board[y].every(cell => cell !== null)) {
+                    // 删除满行，顶部补空
+                    game.board.splice(y, 1);
+                    game.board.unshift(Array(COLS).fill(null));
+                    y++; // 重新检查当前行
+                    linesCleared++;
+                }
+            }
+
+            if (linesCleared > 0) {
+                // 分数计算（固定公式，无波动）
+                game.score += linesCleared * 100 * game.level;
+                els.score.textContent = game.score;
+
+                // 等级计算（每1000分升级，仅升级时调整速度）
+                const newLevel = Math.floor(game.score / 1000) + 1;
+                if (newLevel !== game.level) {
+                    game.level = newLevel;
+                    els.level.textContent = game.level;
+                    // 仅在等级变化时调整速度（核心：避免频繁重置定时器）
+                    updateSpeed();
+                }
+            }
+        }
+
+        // 5. 更新速度（仅在等级变化时执行，稳定无波动）
+        function updateSpeed() {
+            // 速度计算公式：基础速度 - (等级-1)*步长，不低于最小速度
+            game.currentSpeed = Math.max(
+                game.minSpeed,
+                game.baseSpeed - (game.level - 1) * game.speedStep
+            );
+
+            // 仅在游戏运行时重置定时器（避免暂停时修改）
+            if (game.isRunning && !game.isPaused) {
+                clearInterval(game.timer);
+                game.timer = setInterval(gameLoop, game.currentSpeed);
+            }
+        }
+
+        // 6. 移动方块（单次移动，无连续触发）
+        function movePiece(dx, dy) {
+            if (!game.currentPiece || game.isPaused) return false;
+
+            if (!checkCollision(dx, dy)) {
+                game.currentX += dx;
+                game.currentY += dy;
+                draw();
+                return true;
+            }
+
+            // 向下碰撞则固定
+            if (dy > 0) {
+                lockPiece();
+                return false;
+            }
+            return false;
+        }
+
+        // 7. 旋转方块（稳定无卡顿）
+        function rotatePiece() {
+            if (!game.currentPiece || game.isPaused) return;
+
+            const originalShape = JSON.parse(JSON.stringify(game.currentPiece.shape));
+            // 旋转矩阵（固定算法）
+            const rotated = originalShape[0].map((_, idx) =>
+                originalShape.map(row => row[idx]).reverse()
+            );
+
+            game.currentPiece.shape = rotated;
+            // 碰撞则恢复
+            if (checkCollision(0, 0)) {
+                game.currentPiece.shape = originalShape;
+            }
+            draw();
+        }
+
+        // 8. 绘制游戏（一次性重绘，无重复渲染）
+        function draw() {
+            // 清空画布（一次性）
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制棋盘
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    if (game.board[y][x]) {
+                        drawBlock(x * GRID_SIZE, y * GRID_SIZE, game.board[y][x]);
+                    }
+                }
+            }
+
+            // 绘制当前方块
+            if (game.currentPiece && !game.isPaused) {
+                const shape = game.currentPiece.shape;
+                const color = game.currentPiece.color;
+                for (let y = 0; y < shape.length; y++) {
+                    for (let x = 0; x < shape[y].length; x++) {
+                        if (shape[y][x]) {
+                            drawBlock(
+                                (game.currentX + x) * GRID_SIZE,
+                                (game.currentY + y) * GRID_SIZE,
+                                color
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // 绘制单个方块（固定样式，无动态变化）
+        function drawBlock(x, y, color) {
+            ctx.fillStyle = color;
+            ctx.fillRect(x + 1, y + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.strokeRect(x + 1, y + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+        }
+
+        // 9. 游戏主循环（仅执行下落，无多余逻辑）
+        function gameLoop() {
+            if (game.isPaused || !game.isRunning) return;
+            // 单次向下移动，避免连续触发
+            movePiece(0, 1);
+        }
+
+        // 10. 开始游戏（完全重置，速度初始化）
+        function startGame() {
+            // 重置所有状态
+            game.board = Array(ROWS).fill().map(() => Array(COLS).fill(null));
+            game.currentPiece = null;
+            game.currentX = 0;
+            game.currentY = 0;
+            game.score = 0;
+            game.level = 1;
+            game.currentSpeed = game.baseSpeed; // 重置为基础速度
+            game.isRunning = true;
+            game.isPaused = false;
+
+            // 更新UI
+            els.score.textContent = 0;
+            els.level.textContent = 1;
+            els.status.style.display = 'none';
+
+            // 生成第一个方块
+            spawnPiece();
+            // 启动定时器（仅一次，等级变化时才重置）
+            clearInterval(game.timer);
+            game.timer = setInterval(gameLoop, game.currentSpeed);
+            draw();
+        }
+
+        // 11. 暂停/继续（不修改速度）
+        function togglePause() {
+            if (!game.isRunning) return;
+
+            game.isPaused = !game.isPaused;
+            if (game.isPaused) {
+                els.statusText.textContent = 'Paused';
+                els.hintText.textContent = '按 Q 继续 | 按 E 重新开始';
+                els.status.style.display = 'block';
+            } else {
+                els.status.style.display = 'none';
+                draw();
+            }
+        }
+
+        // 12. 结束游戏（清理定时器）
+        function endGame() {
+            game.isRunning = false;
+            clearInterval(game.timer);
+            els.statusText.textContent = 'Game Over';
+            els.hintText.textContent = '按 E 重新开始 | 按 Q 暂停/继续';
+            els.status.style.display = 'block';
+        }
+
+        // 13. 键盘控制（防抖，单次触发）
+        document.addEventListener('keydown', (e) => {
+            // 优先处理开始/暂停（无防抖，即时响应）
+            if (e.key.toLowerCase() === 'e') {
+                startGame();
+                return;
+            }
+            if (e.key.toLowerCase() === 'q') {
+                togglePause();
+                return;
+            }
+
+            // 游戏未运行/暂停时，不响应操作
+            if (!game.isRunning || game.isPaused) return;
+
+            // 操作防抖（避免长按连续触发导致速度感知异常）
+            e.preventDefault();
+            switch (e.key) {
+                case 'ArrowLeft': movePiece(-1, 0); break;
+                case 'ArrowRight': movePiece(1, 0); break;
+                case 'ArrowDown': movePiece(0, 1); break;
+                case 'ArrowUp': rotatePiece(); break;
+            }
+        });
+
+        // 初始化（显示开始提示）
+        els.statusText.textContent = 'Ready';
+        els.hintText.textContent = '按 E 开始游戏 | 按 Q 暂停/继续';
+        els.status.style.display = 'block';
+        draw();
+    </script>
+</body>
+
+</html>
