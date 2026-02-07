@@ -1,0 +1,139 @@
+body::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(17, 24, 39, 0.0);
+    z-index: -1;
+}
+
+#hero,
+#works,
+#skills,
+#about,
+#contact {
+    position: relative;
+    z-index: 1;
+}
+
+#hero::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url("./images/hero.jpg") no-repeat center center;
+    background-size: cover;
+    background-attachment: local;
+    opacity: 0.9;
+    filter: brightness(1.1);
+    z-index: -1;
+    border-radius: inherit;
+}
+
+#hero::after,
+#works::after,
+#skills::after,
+#about::after,
+#contact::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(17, 24, 39, 0.0);
+    z-index: -1;
+    border-radius: inherit;
+}
+
+#works::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url("./images/works.jpg") no-repeat center center;
+    background-size: cover;
+    background-attachment: local;
+    opacity: 0.3;
+    z-index: -1;
+    border-radius: inherit;
+}
+
+#skills::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url("./images/skills.jpg") no-repeat center center;
+    background-size: cover;
+    background-attachment: local;
+    opacity: 0.8;
+    z-index: -1;
+    border-radius: inherit;
+}
+
+#about::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url("./images/about.png") no-repeat center center;
+    background-size: cover;
+    background-attachment: local;
+    opacity: 0.8;
+    z-index: -1;
+    border-radius: inherit;
+}
+
+#contact::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: url("./images/contact.jpg") no-repeat center center;
+    background-size: cover;
+    background-attachment: local;
+    opacity: 0.8;
+    z-index: -1;
+    border-radius: inherit;
+}
+
+@layer utilities {
+    .ease-luxury {
+        transition-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .hardware-accel {
+        transform: translateZ(0);
+    }
+
+    .card-glow {
+        box-shadow: 0 0 0 rgba(251, 191, 36, 0);
+    }
+
+    .card-glow:hover {
+        box-shadow: 0 0 12px rgba(251, 191, 36, 0.2), 0 0 24px rgba(251, 191, 36, 0.1);
+    }
+
+    .text-gradient {
+        background-clip: text;
+        -webkit-background-clip: text;
+        color: transparent;
+        background-image: linear-gradient(to right, #fbbf24, #f59e0b);
+    }
+}
+
+
+
